@@ -1,0 +1,81 @@
+version: "3.1"
+services:
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:alpine-latest
+    ports:
+      - "10051:10051"
+    env_file:
+      - .env_db_mysql
+    environment:
+      - ZBX_DEBUGLEVEL=3
+      - ZBX_TLSCAFILE=zabbix_ca_file
+      - ZBX_TLSCERTFILE=zabbix_server.crt
+      - ZBX_TLSKEYFILE=zabbix_server.key
+    volumes:
+      - ./enc:/var/lib/zabbix/enc
+    networks:
+      zabbix-backend:
+    depends_on:
+      - mysql-server
+  mysql-server:
+    image: mariadb:latest
+    command: [--character-set-server=utf8, --collation-server=utf8_bin]
+    env_file:
+      - .env_db_mysql
+    networks:
+      zabbix-backend:
+        aliases:
+          - mysql-server
+  zabbix-web-apache-mysql:
+    image: zabbix/zabbix-web-apache-mysql:alpine-4.4-latest
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env_db_mysql
+    user: root
+    depends_on:
+      - mysql-server
+      - zabbix-server
+    networks:
+      zabbix-backend:
+      zabbix-frontend:
+        aliases:
+          - zabbix-frontend
+  zabbix-agent:
+    image: zabbix/zabbix-agent:alpine-4.4-latest
+    environment:
+      - ZBX_REFRESHACTIVECHECKS=60
+      - ZBX_SERVER_HOST=zabbix-server
+      - ZBX_HOSTNAME=dummy
+      - ZBX_DEBUGLEVEL=3
+      - ZBX_TLSCAFILE=zabbix_ca_file
+      - ZBX_TLSCERTFILE=zabbix_agentd.crt
+      - ZBX_TLSKEYFILE=zabbix_agentd.key
+      - ZBX_TLSCONNECT=cert
+      - ZBX_TLSACCEPT=cert
+    volumes:
+      - ./enc:/var/lib/zabbix/enc:ro
+    networks:
+      zabbix-backend:
+    depends_on:
+      - zabbix-server
+  zabbix-tools:
+    build:
+      context: ./zabbix-tools
+    environment:
+      - ZABBIX_URL=http://zabbix-frontend
+      - ZABBIX_USERNAME=Admin 
+      - ZABBIX_PASSWORD=zabbix
+    volumes:
+      - ./hosts:/var/local/zabbix-tools/hosts
+    networks:
+      - zabbix-frontend
+    command: [echo, "zabbix-tools nothing to do, bye"]
+
+networks:
+  zabbix-frontend:
+    driver: bridge
+  zabbix-backend:
+    driver: bridge
+
